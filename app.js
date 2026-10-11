@@ -308,14 +308,7 @@
     if (!nq) return null;
     for (var i = 0; i < FACTS.length; i++) {
       var f = FACTS[i];
-      if (!f || !f.question) continue;
-      if (normalize(f.question) === nq) return f;
-      if (f.id && nq === f.id) return f;
-      if (f.aliases) {
-        for (var a = 0; a < f.aliases.length; a++) {
-          if (normalize(f.aliases[a]) === nq) return f;
-        }
-      }
+      if (f && f.question && normalize(f.question) === nq) return f;
     }
     return null;
   }
@@ -329,23 +322,12 @@
     return false;
   }
 
-  function renderFact(query, fact, verdictNote) {
+  function renderFact(query, fact) {
     els.result.textContent = "";
     var card = el("article", "card");
     card.appendChild(askedLine(query));
-    if (verdictNote) {
-      var box = el("div", "verdict-note");
-      box.appendChild(el("span", "vw", "yes / no"));
-      box.appendChild(el("p", null, verdictNote));
-      card.appendChild(box);
-    }
-    card.appendChild(el("p", verdictNote ? "answer secondary" : "answer", fact.answer));
+    card.appendChild(el("p", "answer", fact.answer));
     if (fact.detail) card.appendChild(el("p", "detail", fact.detail));
-    if (fact.tags && fact.tags.length) {
-      var meta = el("p", "meta");
-      for (var i = 0; i < fact.tags.length; i++) meta.appendChild(el("span", "tag", fact.tags[i]));
-      card.appendChild(meta);
-    }
     els.result.appendChild(card);
     document.title = fact.question + " — i forgot again";
   }
@@ -520,7 +502,7 @@
     els.result.textContent = "";
     var blank = el("div", "blank");
     blank.appendChild(el("p", "blank-title", "I forgot that one too."));
-    blank.appendChild(el("p", "blank-sub", "Try asking it differently, or add it as a fact."));
+    blank.appendChild(el("p", "blank-sub", "Try asking it differently, or write it down in facts.js."));
     els.result.appendChild(blank);
     document.title = "i forgot again";
   }
@@ -539,12 +521,6 @@
     aiSeq++; // any new question cancels a model answer still in flight
     var fact = findFact(q);
     if (fact) {
-      var yn = looksYesNo(q);
-      if (yn && fact.yesNoAnswer) {
-        renderFact(q, fact, fact.yesNoAnswer);
-        if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-        return;
-      }
       renderFact(q, fact);
       if (location.hash) history.replaceState(null, "", location.pathname + location.search);
       return;
@@ -617,7 +593,14 @@
   scheduleWarm();
 
   function updateCount() {
-    if (els.count) els.count.textContent = FACTS.length + " fact" + (FACTS.length === 1 ? "" : "s");
+    if (!els.count) return;
+    var n = FACTS.length;
+    els.count.textContent = n === 0 ? "no facts yet" : n + " fact" + (n === 1 ? "" : "s");
+    if (els.random) {
+      els.random.hidden = n === 0;
+      var sep = els.random.parentNode ? els.random.parentNode.querySelector(".hint-sep") : null;
+      if (sep) sep.hidden = n === 0;
+    }
   }
   updateCount();
 

@@ -2,23 +2,24 @@
 
 A tiny notebook for the stupid-simple facts I keep forgetting.
 
-You land on a blank prompt box. You type the half-remembered thing. If it's
-written down, you get the answer. If it isn't, you get a blank stare and a note
-to write it down next time.
+You land on a blank prompt box. You type the half-remembered thing. If you've
+written it down in `facts.js`, you get that answer back. If you haven't, the
+question goes to the model — or, on the built-in engine, you get a blank stare
+and a nudge to write it down.
 
-The first entry is the one that started this: **who was the teacher, Plato or
-Socrates?**
+It ships with an empty `facts.js` on purpose. That one file is the whole
+database; every fact you add lives there.
 
 ## How it works
 
-A **fact always wins**. If what you typed matches something in `facts.js`, you
+A **fact always wins**. If what you typed matches a question in `facts.js`, you
 get it, whatever the toggle says.
 
 Otherwise the "answer with" toggle decides who answers:
 
 | Side | Who answers | Notes |
 | --- | --- | --- |
-| **AI model** (default) | a small language model running in this tab on **WebGPU** | Answers any question. Downloads once (~260 MB), then cached. Nothing is uploaded. |
+| **AI model** (default) | a small language model running in this tab on **WebGPU** | Answers any question. Preloads in the background (~260 MB, once). Nothing is uploaded. |
 | **built-in** | the page's own word-weight guesser | A yes/no guess for yes/no questions, a blank stare for everything else. Zero download. |
 
 So there are four outcomes, checked in order:
@@ -126,32 +127,18 @@ an oracle.
 Open `facts.js`, copy the shape, fill it in, save, refresh. That's the whole
 workflow.
 
-## Adding a fact
-
-Open `facts.js`, copy the shape, fill it in, save, refresh. That's the whole
-workflow.
-
 ```js
 {
-  id: "plato-socrates",                  // the URL becomes index.html#plato-socrates
   question: "Who was the teacher, Plato or Socrates?",
   answer:   "Socrates was the teacher. Plato was the student.",
-  detail:   "One or two extra sentences, if you have them.",
-  yesNoAnswer: "Shown instead of a guess when you ask this as a yes/no question.",
-  keywords: ["plato", "socrates", "teacher", "student", "greek", "philosophy"],
-  tags:     ["philosophy", "history"]
+  detail:   "One or two extra sentences, if you have them."
 }
 ```
 
-`keywords` is the search engine. Put in the words you would actually type,
-including the wrong guesses you keep making. That's why `teacher` and `student`
-are in the Plato entry even though the question already contains them.
-
-`yesNoAnswer` is optional and exists for one reason: a hash cannot tell whether
-you meant *"was Socrates the teacher of Plato"* or *"was Plato the teacher of
-Socrates"*. Both contain the same words. So when your question is a yes/no one
-and it hits this fact, your hand-written sentence answers it instead of the
-oracle guessing. Write it yourself.
+A fact has three fields and no more. `question` is what you'll type back in —
+case and punctuation don't matter, and the answer only appears when the question
+matches. `answer` is the reply. `detail` is the optional "more info" line under
+it.
 
 ## Running it locally
 
