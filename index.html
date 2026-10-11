@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>i forgot again</title>
+<meta name="description" content="A tiny notebook for the stupid-simple facts I keep forgetting. Ask, and it answers.">
+<meta name="theme-color" content="#0b0c0e">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<main class="shell">
+
+  <header class="masthead">
+    <h1 class="wordmark"><a href="./">i forgot again</a></h1>
+    <p class="tagline">things I already knew and lost</p>
+  </header>
+
+  <form class="ask" id="ask" role="search" autocomplete="off">
+    <label class="vh" for="q">What did you forget?</label>
+    <span class="caret" aria-hidden="true">&gt;</span>
+    <input
+      id="q"
+      name="q"
+      type="text"
+      placeholder="type what you forgot…"
+      autocomplete="off"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
+      enterkeyhint="search">
+    <button class="vh" type="submit">Ask</button>
+  </form>
+
+  <p class="hint" id="hint">
+    <span id="count"></span>
+    <span class="hint-sep" aria-hidden="true">·</span>
+    <button type="button" id="random" class="linkish">I don't remember what I forgot</button>
+  </p>
+
+  <section class="result" id="result" aria-live="polite"></section>
+
+</main>
+
+<footer class="footer">
+  <p>Ask a question. If it's written down, you get an answer. If it isn't, you get a blank stare.</p>
+</footer>
+
+<script src="facts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+/* styles.css — one file, no framework. Dark by default, light if the OS asks. */
+
+:root {
+  --bg: #0b0c0e;
+  --ink: #e8e9ea;
+  --dim: #71757a;
+  --faint: #2a2d31;
+  --accent: #d6ff5c;
+  --panel: #121316;
+  --max: 46rem;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fbfbf9;
+    --ink: #14161a;
+    --dim: #6a6f75;
+    --faint: #e2e3e0;
+    --accent: #3f6b00;
+    --panel: #ffffff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 16px;
+  line-height: 1.6;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  flex: 1;
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: clamp(3rem, 14vh, 9rem) 1.25rem 2rem;
+}
+
+/* ---- masthead ---- */
+
+.masthead { margin-bottom: 2.75rem; }
+
+.wordmark {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.wordmark a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wordmark a:hover { color: var(--accent); }
+
+.tagline {
+  margin: 0.15rem 0 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+/* ---- the prompt ---- */
+
+.ask {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--faint);
+  padding-bottom: 0.6rem;
+  transition: border-color 140ms ease;
+}
+
+.ask:focus-within { border-color: var(--accent); }
+
+.caret {
+  color: var(--accent);
+  font-weight: 700;
+  flex: none;
+}
+
+#q {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: clamp(1.0625rem, 3.5vw, 1.375rem);
+  caret-color: var(--accent);
+}
+
+#q:focus { outline: none; }
+
+#q::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+
+@media (prefers-color-scheme: light) {
+  #q::placeholder { color: #b3b5b0; }
+}
+
+/* ---- hint line ---- */
+
+.hint {
+  margin: 0.85rem 0 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.hint-sep { padding: 0 0.4rem; opacity: 0.6; }
+
+.linkish {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px dotted currentColor;
+}
+
+.linkish:hover { color: var(--accent); }
+
+/* ---- results ---- */
+
+.result { margin-top: 3rem; }
+
+.card {
+  border-left: 2px solid var(--accent);
+  padding: 0.15rem 0 0.15rem 1.1rem;
+  animation: rise 220ms ease-out both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; }
+}
+
+.card .asked {
+  margin: 0 0 0.75rem;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.card .asked .echo { color: var(--ink); }
+
+.card .answer {
+  margin: 0;
+  font-size: clamp(1.0625rem, 3.5vw, 1.3125rem);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.card .detail {
+  margin: 0.9rem 0 0;
+  color: var(--dim);
+  font-size: 0.875rem;
+  max-width: 38rem;
+}
+
+.card .meta {
+  margin: 1rem 0 0;
+  color: var(--dim);
+  font-size: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.card .meta .tag::before { content: "#"; opacity: 0.6; }
+
+/* ---- blank stare ---- */
+
+.blank {
+  color: var(--dim);
+  animation: rise 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blank { animation: none; }
+}
+
+.blank .lead { margin: 0; color: var(--ink); }
+
+.blank .sub { margin: 0.6rem 0 0; font-size: 0.875rem; }
+
+.blank .suggest {
+  margin: 0.9rem 0 0;
+  font-size: 0.875rem;
+}
+
+.blank .suggest button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px solid currentColor;
+}
+
+.blank .suggest button:hover { opacity: 0.75; }
+
+/* ---- footer ---- */
+
+.footer {
+  max-width: var(--max);
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 2.5rem;
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .footer { color: #a9aba6; }
+}
+
+.footer p { margin: 0; }
+
+/* ---- screen-reader only ---- */
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
