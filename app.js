@@ -78,14 +78,9 @@
 
   /* ---- answer engine: an on-device model on WebGPU, or the built-in guesser ---- */
 
-  var ENGINE_KEY = "ifa.engine";
   var ENGINE_AI = "ai";
   var ENGINE_LOCAL = "local";
-  var currentEngine = ENGINE_AI;
-  try {
-    var savedEngine = localStorage.getItem(ENGINE_KEY);
-    if (savedEngine === ENGINE_AI || savedEngine === ENGINE_LOCAL) currentEngine = savedEngine;
-  } catch (e) {}
+  var currentEngine = ENGINE_AI; // always starts here; nothing is remembered between visits
 
   /* The model runs in this tab through transformers.js + WebGPU. Nothing is
    * uploaded; the weights download once (~260 MB) and the browser caches them.
@@ -279,8 +274,6 @@
     form: document.getElementById("ask"),
     input: document.getElementById("q"),
     result: document.getElementById("result"),
-    count: document.getElementById("count"),
-    random: document.getElementById("random"),
     engine: document.getElementById("engine"),
     engineStatus: document.getElementById("engine-status")
   };
@@ -553,7 +546,6 @@
     if (mode !== ENGINE_AI && mode !== ENGINE_LOCAL) return;
     currentEngine = mode;
     aiSeq++;
-    try { localStorage.setItem(ENGINE_KEY, mode); } catch (e) {}
     renderEngine();
     if (mode === ENGINE_LOCAL) {
       setStatus("");
@@ -562,15 +554,7 @@
     }
   }
 
-  function randomFact() {
-    if (!FACTS.length) return;
-    var f = FACTS[Math.floor(Math.random() * FACTS.length)];
-    els.input.value = f.question;
-    ask();
-  }
-
   els.form.addEventListener("submit", function (e) { e.preventDefault(); ask(); });
-  if (els.random) els.random.addEventListener("click", randomFact);
 
   // start loading the model as soon as someone shows intent to ask
   if (els.input) {
@@ -591,18 +575,6 @@
   }
   renderEngine();
   scheduleWarm();
-
-  function updateCount() {
-    if (!els.count) return;
-    var n = FACTS.length;
-    els.count.textContent = n === 0 ? "no facts yet" : n + " fact" + (n === 1 ? "" : "s");
-    if (els.random) {
-      els.random.hidden = n === 0;
-      var sep = els.random.parentNode ? els.random.parentNode.querySelector(".hint-sep") : null;
-      if (sep) sep.hidden = n === 0;
-    }
-  }
-  updateCount();
 
   var hash = location.hash.slice(1);
   if (hash) {

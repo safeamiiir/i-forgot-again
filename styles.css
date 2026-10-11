@@ -114,28 +114,6 @@ body {
   #q::placeholder { color: #b3b5b0; }
 }
 
-/* ---- hint line ---- */
-
-.hint {
-  margin: 0.85rem 0 0;
-  color: var(--dim);
-  font-size: 0.8125rem;
-}
-
-.hint-sep { padding: 0 0.4rem; opacity: 0.6; }
-
-.linkish {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--dim);
-  font: inherit;
-  cursor: pointer;
-  border-bottom: 1px dotted currentColor;
-}
-
-.linkish:hover { color: var(--accent); }
-
 /* ---- answer engine toggle ---- */
 
 .engine {

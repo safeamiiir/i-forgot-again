@@ -29,8 +29,8 @@ So there are four outcomes, checked in order:
 3. **Built-in mode, yes/no question** → the oracle: a verdict plus a probability.
 4. **Built-in mode, anything else** → a blank stare.
 
-Your choice is remembered in `localStorage` (`ifa.engine`), so it survives a
-refresh. The default is **AI model**.
+The toggle always starts on **AI model** and isn't remembered between visits —
+reload and you're back to the default.
 
 No framework, no build step. Three local files do all the work:
 
