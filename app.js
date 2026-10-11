@@ -76,18 +76,83 @@
     return 1 / (1 + Math.exp(-x));
   }
 
-  var ORACLE_MODE_KEY = "ifa.oracleMode";
-  var currentOracleMode = "weights";
+  /* ---- answer engine: an on-device model on WebGPU, or the built-in guesser ---- */
+
+  var ENGINE_KEY = "ifa.engine";
+  var ENGINE_AI = "ai";
+  var ENGINE_LOCAL = "local";
+  var currentEngine = ENGINE_AI;
   try {
-    var saved = localStorage.getItem(ORACLE_MODE_KEY);
-    if (saved === "random" || saved === "weights") currentOracleMode = saved;
+    var savedEngine = localStorage.getItem(ENGINE_KEY);
+    if (savedEngine === ENGINE_AI || savedEngine === ENGINE_LOCAL) currentEngine = savedEngine;
   } catch (e) {}
 
-  function setOracleMode(mode) {
-    if (mode === "random" || mode === "weights") {
-      currentOracleMode = mode;
-      try { localStorage.setItem(ORACLE_MODE_KEY, mode); } catch (e) {}
-    }
+  /* The model runs in this tab through transformers.js + WebGPU. Nothing is
+   * uploaded; the weights download once (~260 MB) and the browser caches them.
+   * Swap MODEL_ID/MODEL_MB for a bigger one (onnx-community/Qwen2.5-0.5B-Instruct,
+   * ~460 MB) if you want better answers. */
+  var TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/+esm";
+  var MODEL_ID = "HuggingFaceTB/SmolLM2-360M-Instruct";
+  var MODEL_DTYPE = "q4f16";
+  var MODEL_LABEL = "SmolLM2-360M";
+  var MODEL_MB = 260;
+
+  var SYSTEM_PROMPT =
+    "You are the memory of a forgetful person. Answer in one to three short " +
+    "sentences, plainly and directly. If you do not know, say so in a few words. " +
+    "Do not restate the question.";
+
+  var aiLib = null;        // the transformers.js module, once imported
+  var aiGenerator = null;  // the loaded pipeline
+  var aiLoad = null;       // in-flight load promise
+  var aiProgress = [];     // progress listeners waiting on the in-flight load
+  var aiSeq = 0;           // guards against stale answers
+
+  function hasWebGPU() {
+    return typeof navigator !== "undefined" &&
+      !!navigator.gpu &&
+      typeof navigator.gpu.requestAdapter === "function";
+  }
+
+  function checkWebGPU() {
+    if (!hasWebGPU()) return Promise.reject({ code: "no-webgpu" });
+    return navigator.gpu.requestAdapter().then(function (adapter) {
+      if (!adapter) throw { code: "no-webgpu" };
+      return true;
+    });
+  }
+
+  function loadModel(onProgress) {
+    if (aiGenerator) return Promise.resolve(aiGenerator);
+    if (onProgress) aiProgress.push(onProgress);
+    if (aiLoad) return aiLoad;
+    aiLoad = checkWebGPU()
+      .then(function () { return import(TRANSFORMERS_URL); })
+      .then(function (mod) {
+        aiLib = mod;
+        mod.env.allowLocalModels = false;
+        mod.env.useBrowserCache = true;
+        return mod.pipeline("text-generation", MODEL_ID, {
+          device: "webgpu",
+          dtype: MODEL_DTYPE,
+          progress_callback: function (p) {
+            for (var i = 0; i < aiProgress.length; i++) {
+              try { aiProgress[i](p); } catch (e) {}
+            }
+          }
+        });
+      })
+      .then(function (gen) {
+        aiGenerator = gen;
+        aiProgress = [];
+        return gen;
+      })
+      .catch(function (err) {
+        aiLoad = null;
+        aiProgress = [];
+        throw err;
+      });
+    return aiLoad;
   }
 
   function oracleWeights(query) {
@@ -139,24 +204,13 @@
     return { verdict: yes >= 0.5 ? "yes" : "no", confidence: conf, yes: yes, source: "weights" };
   }
 
-  function oracleRandom() {
-    var r = Math.random();
-    var yes = 0.05 + r * 0.9;
-    var conf = Math.max(yes, 1 - yes);
-    return { verdict: yes >= 0.5 ? "yes" : "no", confidence: conf, yes: yes, source: "random" };
-  }
-
-  function oracle(query) {
-    if (currentOracleMode === "random") return oracleRandom();
-    return oracleWeights(query);
-  }
-
   var els = {
     form: document.getElementById("ask"),
     input: document.getElementById("q"),
     result: document.getElementById("result"),
     count: document.getElementById("count"),
-    random: document.getElementById("random")
+    random: document.getElementById("random"),
+    engine: document.getElementById("engine")
   };
 
   function normalize(s) {
@@ -238,25 +292,150 @@
     bar.setAttribute("role", "img");
     bar.setAttribute("aria-label", o.verdict + ", " + pct + " percent confident");
     card.appendChild(bar);
-    var detail = o.source === "random"
-      ? "Pure random guess each time. It's honest noise, not reasoning."
-      : "AI-ish guess (deterministic): turns words, bigrams, trigrams, 4-grams into weights, handles simple negation, normalizes by length, adds a tiny bias, maps through sigmoid. Same question -> same answer. Invented behavior, not evidence.";
+    var detail = "AI-ish guess (deterministic): turns words, bigrams, trigrams, 4-grams into weights, handles simple negation, normalizes by length, adds a tiny bias, maps through sigmoid. Same question -> same answer. Invented behavior, not evidence.";
     card.appendChild(el("p", "detail", detail));
-    var toggle = el("p", "meta");
-    var label = el("label", null);
-    var cb = el("input");
-    cb.type = "checkbox";
-    cb.checked = currentOracleMode === "random";
-    cb.addEventListener("change", function () {
-      setOracleMode(cb.checked ? "random" : "weights");
-      ask(query);
-    });
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(" Use pure random (no AI guess)"));
-    toggle.appendChild(label);
-    card.appendChild(toggle);
+    var meta = el("p", "meta");
+    meta.appendChild(el("span", "badge", "built-in"));
+    meta.appendChild(el("span", "meta-note", "no network, no model — just word weights"));
+    card.appendChild(meta);
     els.result.appendChild(card);
     document.title = o.verdict.toUpperCase() + " — i forgot again";
+  }
+
+  function tidyModelText(s) {
+    return String(s || "")
+      .replace(/\*\*/g, "")
+      .replace(/\r\n/g, "\n")
+      .trim();
+  }
+
+  function aiMeta() {
+    var meta = el("p", "meta");
+    meta.appendChild(el("span", "badge", "AI model"));
+    meta.appendChild(el("span", "meta-note", MODEL_LABEL + " · WebGPU · runs on your device"));
+    return meta;
+  }
+
+  /* Build the card up front, then fill it in as the model downloads and streams. */
+  function renderAIShell(query) {
+    els.result.textContent = "";
+    var card = el("article", "card ai");
+    card.appendChild(askedLine(query));
+    var text = el("p", "ai-text thinking", "loading " + MODEL_LABEL + "…");
+    card.appendChild(text);
+    var bar = el("div", "bar ai-bar");
+    bar.setAttribute("aria-hidden", "true");
+    var fill = el("span", "fill");
+    bar.appendChild(fill);
+    card.appendChild(bar);
+    var note = el("p", "ai-note", "first run downloads about " + MODEL_MB + " MB; the browser caches it after that");
+    card.appendChild(note);
+    card.appendChild(aiMeta());
+    els.result.appendChild(card);
+    return { query: query, text: text, bar: bar, fill: fill, note: note, buffer: "", done: false };
+  }
+
+  function setNote(st, msg) {
+    if (st.note) st.note.textContent = msg == null ? "" : msg;
+  }
+
+  function appendStream(st, chunk) {
+    if (st.done) return;
+    if (st.text.classList.contains("thinking")) st.text.classList.remove("thinking");
+    st.buffer += chunk;
+    st.text.textContent = st.buffer;
+  }
+
+  function finishAI(st) {
+    st.done = true;
+    st.text.classList.remove("thinking");
+    var clean = tidyModelText(st.buffer);
+    st.text.textContent = clean || "(the model had nothing to say)";
+    if (st.bar && st.bar.parentNode) st.bar.parentNode.removeChild(st.bar);
+    setNote(st, "");
+    document.title = st.query + " — i forgot again";
+  }
+
+  function renderAIError(query, err) {
+    els.result.textContent = "";
+    var card = el("article", "card ai ai-error");
+    card.appendChild(askedLine(query));
+    var message;
+    if (err && err.code === "no-webgpu") {
+      message = "This browser has no WebGPU, so the on-device model can't run. A recent desktop Chrome or Edge can; the built-in always works.";
+    } else if (err && err.name === "TypeError") {
+      message = "Couldn't load the model library. Check your connection — the code and weights come from a CDN the first time.";
+    } else {
+      message = "The model failed to run" + (err && err.message ? " (" + err.message + ")" : "") + ".";
+    }
+    card.appendChild(el("p", "ai-text", message));
+    var again = el("p", "suggest");
+    var retry = el("button", null, "try again");
+    retry.type = "button";
+    retry.addEventListener("click", function () { ask(query); });
+    again.appendChild(retry);
+    again.appendChild(document.createTextNode(" or "));
+    var swap = el("button", null, "use the built-in");
+    swap.type = "button";
+    swap.addEventListener("click", function () { setEngine(ENGINE_LOCAL); ask(query); });
+    again.appendChild(swap);
+    card.appendChild(again);
+    card.appendChild(aiMeta());
+    els.result.appendChild(card);
+    document.title = query + " — i forgot again";
+  }
+
+  function askAI(query) {
+    var seq = aiSeq;
+    var st = renderAIShell(query);
+
+    loadModel(function (p) {
+      if (seq !== aiSeq) return;
+      if (p && p.status === "progress" && typeof p.progress === "number") {
+        var pct = Math.max(0, Math.min(100, Math.round(p.progress)));
+        st.text.textContent = "loading " + MODEL_LABEL + "… " + pct + "%";
+        st.fill.style.width = pct + "%";
+        setNote(st, p.file ? "downloading " + p.file : "downloading the model");
+      } else if (p && p.status === "ready") {
+        st.text.textContent = "warming up…";
+        st.fill.style.width = "100%";
+      }
+    })
+      .then(function (gen) {
+        if (seq !== aiSeq) return;
+        st.text.textContent = "";
+        if (st.fill) st.fill.style.width = "100%";
+        setNote(st, "");
+        var streamer = new aiLib.TextStreamer(gen.tokenizer, {
+          skip_prompt: true,
+          skip_special_tokens: true,
+          callback_function: function (chunk) {
+            if (seq !== aiSeq) return;
+            appendStream(st, chunk);
+          }
+        });
+        var messages = [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: query }
+        ];
+        return gen(messages, {
+          max_new_tokens: 220,
+          do_sample: true,
+          temperature: 0.6,
+          top_p: 0.9,
+          repetition_penalty: 1.1,
+          streamer: streamer
+        });
+      })
+      .then(function () {
+        if (seq !== aiSeq) return;
+        finishAI(st);
+      })
+      .catch(function (err) {
+        if (seq !== aiSeq) return;
+        if (err && err.name === "AbortError") return;
+        renderAIError(query, err);
+      });
   }
 
   function renderBlank(query) {
@@ -269,6 +448,7 @@
   }
 
   function clear() {
+    aiSeq++;
     els.result.textContent = "";
     if (location.hash) history.replaceState(null, "", location.pathname + location.search);
     document.title = "i forgot again";
@@ -278,6 +458,7 @@
     var q = (raw == null ? els.input.value : raw).trim();
     if (!q) { clear(); return; }
     if (els.input.value !== q) els.input.value = q;
+    aiSeq++; // any new question cancels a model answer still in flight
     var fact = findFact(q);
     if (fact) {
       var yn = looksYesNo(q);
@@ -290,13 +471,36 @@
       if (location.hash) history.replaceState(null, "", location.pathname + location.search);
       return;
     }
+    if (currentEngine === ENGINE_AI) {
+      askAI(q);
+      if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+      return;
+    }
     if (looksYesNo(q)) {
-      renderOracle(q, oracle(q));
+      renderOracle(q, oracleWeights(q));
       if (location.hash) history.replaceState(null, "", location.pathname + location.search);
       return;
     }
     renderBlank(q);
     if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  function renderEngine() {
+    if (!els.engine) return;
+    var opts = els.engine.querySelectorAll(".engine-opt");
+    for (var i = 0; i < opts.length; i++) {
+      var on = opts[i].getAttribute("data-engine") === currentEngine;
+      opts[i].classList.toggle("is-on", on);
+      opts[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function setEngine(mode) {
+    if (mode !== ENGINE_AI && mode !== ENGINE_LOCAL) return;
+    currentEngine = mode;
+    aiSeq++;
+    try { localStorage.setItem(ENGINE_KEY, mode); } catch (e) {}
+    renderEngine();
   }
 
   function randomFact() {
@@ -309,6 +513,18 @@
   els.form.addEventListener("submit", function (e) { e.preventDefault(); ask(); });
   if (els.random) els.random.addEventListener("click", randomFact);
 
+  if (els.engine) {
+    els.engine.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest(".engine-opt") : null;
+      if (!btn) return;
+      var mode = btn.getAttribute("data-engine");
+      if (mode === currentEngine) return;
+      setEngine(mode);
+      if (els.input.value.trim()) ask();
+    });
+  }
+  renderEngine();
+
   function updateCount() {
     if (els.count) els.count.textContent = FACTS.length + " fact" + (FACTS.length === 1 ? "" : "s");
   }
@@ -316,7 +532,12 @@
 
   var hash = location.hash.slice(1);
   if (hash) {
-    var decoded = decodeURIComponent(hash);
+    var decoded;
+    try {
+      decoded = decodeURIComponent(hash);
+    } catch (e) {
+      decoded = hash;
+    }
     els.input.value = decoded;
     ask(decoded);
   }

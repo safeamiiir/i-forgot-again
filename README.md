@@ -11,26 +11,40 @@ Socrates?**
 
 ## How it works
 
-Three paths, checked in order:
+A **fact always wins**. If what you typed matches something in `facts.js`, you
+get it, whatever the toggle says.
+
+Otherwise the "answer with" toggle decides who answers:
+
+| Side | Who answers | Notes |
+| --- | --- | --- |
+| **AI model** (default) | a small language model running in this tab on **WebGPU** | Answers any question. Downloads once (~260 MB), then cached. Nothing is uploaded. |
+| **built-in** | the page's own word-weight guesser | A yes/no guess for yes/no questions, a blank stare for everything else. Zero download. |
+
+So there are four outcomes, checked in order:
 
 1. **A fact matches** → the fact, from `facts.js`.
-2. **No fact, but it's a yes/no question** → the oracle: a verdict plus a probability.
-3. **Neither** → a blank stare.
+2. **AI mode, no fact** → the on-device model's answer, streamed word by word.
+3. **Built-in mode, yes/no question** → the oracle: a verdict plus a probability.
+4. **Built-in mode, anything else** → a blank stare.
 
-No framework, no build step, no dependencies, no tracking. Three files do all
-the work:
+Your choice is remembered in `localStorage` (`ifa.engine`), so it survives a
+refresh. The default is **AI model**.
+
+No framework, no build step. Three local files do all the work:
 
 | File | Job |
 | --- | --- |
 | `facts.js` | The data. Every fact lives in one array. |
-| `app.js` | The matcher and the very light word→weights oracle. All offline. |
+| `app.js` | The matcher, the on-device model, and the word→weights oracle. |
 | `styles.css` | The look. Dark by default, light if your OS asks. |
 
-Everything runs in the browser. Nothing you type is sent anywhere.
+Everything runs in the browser, including the model. **Nothing you type is sent
+anywhere**, by either engine.
 
-## The oracle
+## The built-in oracle
 
-Ask anything starting with *is / are / was / were / do / does / did / can /
+This is the `built-in` side of the toggle. Ask anything starting with *is / are / was / were / do / does / did / can /
 could / will / would / should / has / have / had*, or anything ending in
 *or not*, and you get a YES or NO with a percentage.
 
@@ -58,6 +72,32 @@ It just **turns words into weights**.
 6. Clamp confidence to ≤ 95%.
 
 It's invented behavior, not evidence about the world. The card says that out loud. No download, no build step, just plain JS.
+
+## The AI model side
+
+The default engine runs a real (if very small) language model **inside the
+page**, on your GPU, using [transformers.js](https://huggingface.co/docs/transformers.js)
+over WebGPU. There is no server and no API key.
+
+- **Model:** `HuggingFaceTB/SmolLM2-360M-Instruct`, 4-bit (`q4f16`), about
+  260 MB. It downloads the first time you ask, with a progress bar, then the
+  browser caches it.
+- **Library:** imported straight from a CDN, no bundler:
+  `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/+esm`.
+- **Output:** streamed token by token into the card.
+
+To use a bigger, better model, change `MODEL_ID` (and `MODEL_LABEL` / `MODEL_MB`)
+in `app.js`. `onnx-community/Qwen2.5-0.5B-Instruct` is a good step up
+(~460 MB). To make the offline word-weight answerer the default instead, change
+the `currentEngine` initial value in `app.js` from `ENGINE_AI` to `ENGINE_LOCAL`.
+
+**Two things to expect.** WebGPU support is ~85% of browsers; where it is
+missing (or the GPU adapter can't be created) the card says so and offers the
+built-in. And "small" means small: a 360M model answers simple questions and
+can be confidently wrong on anything harder — treat it as a better guess, not
+an oracle.
+
+
 
 ## Adding a fact
 

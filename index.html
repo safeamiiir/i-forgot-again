@@ -34,6 +34,14 @@
     <button class="vh" type="submit">Ask</button>
   </form>
 
+  <p class="engine">
+    <span class="engine-cap">answer with</span>
+    <span class="engine-switch" id="engine" role="group" aria-label="Who answers the question">
+      <button type="button" class="engine-opt" data-engine="ai" aria-pressed="true">AI model</button>
+      <button type="button" class="engine-opt" data-engine="local" aria-pressed="false">built-in</button>
+    </span>
+  </p>
+
   <p class="hint" id="hint">
     <span id="count"></span>
     <span class="hint-sep" aria-hidden="true">·</span>
@@ -45,7 +53,7 @@
 </main>
 
 <footer class="footer">
-  <p>Ask a question. If it's written down, you get an answer. If it's yes or no, you get a guess with a number attached. Otherwise, a blank stare.</p>
+  <p>Ask a question. If it's written down, you get the answer. Otherwise "AI model" runs a small language model in this tab on WebGPU, and "built-in" answers from word weights alone: a yes/no guess, or a blank stare. Nothing you type leaves the browser.</p>
 </footer>
 
 <script src="facts.js"></script>
