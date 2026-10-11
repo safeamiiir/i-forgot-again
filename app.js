@@ -76,7 +76,21 @@
     return 1 / (1 + Math.exp(-x));
   }
 
-  function oracle(query) {
+  var ORACLE_MODE_KEY = "ifa.oracleMode";
+  var currentOracleMode = "weights";
+  try {
+    var saved = localStorage.getItem(ORACLE_MODE_KEY);
+    if (saved === "random" || saved === "weights") currentOracleMode = saved;
+  } catch (e) {}
+
+  function setOracleMode(mode) {
+    if (mode === "random" || mode === "weights") {
+      currentOracleMode = mode;
+      try { localStorage.setItem(ORACLE_MODE_KEY, mode); } catch (e) {}
+    }
+  }
+
+  function oracleWeights(query) {
     var q = String(query || "").trim();
     if (!q) {
       var r0 = mulberry32(0x1234567)();
@@ -85,25 +99,56 @@
       return { verdict: y0 >= 0.5 ? "yes" : "no", confidence: c0, yes: y0, source: "weights" };
     }
     var tokens = tokenize(q);
+    if (tokens.length === 0) {
+      var r1 = mulberry32(hashSeed(q))();
+      var y1 = 0.05 + r1 * 0.9;
+      var c1 = Math.max(y1, 1 - y1);
+      return { verdict: y1 >= 0.5 ? "yes" : "no", confidence: c1, yes: y1, source: "weights" };
+    }
     var items = tokens.slice();
     items = items.concat(ngrams(tokens, 2));
     items = items.concat(ngrams(tokens, 3));
+    items = items.concat(ngrams(tokens, 4));
     var rngBase = mulberry32(hashSeed(q));
-    var bias = (rngBase() - 0.5) * 0.25;
+    var bias = (rngBase() - 0.5) * 0.35;
     var score = bias;
-    for (var i = 0; i < items.length; i++) {
-      var tok = items[i];
-      var w = weightString(rngBase, tok);
-      var pos = i / Math.max(1, items.length);
-      score += w * (0.9 + 0.2 * (1 - pos));
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (t === "not" || t === "no" || t === "never" || t === "none" || t === "nothing" || t === "nor" || t === "neither") score -= 0.4;
+      if (t.indexOf("n't") !== -1 || t === "dont" || t === "doesnt" || t === "didnt" || t === "cant" || t === "wont") score -= 0.4;
     }
-    if (score > 3) score = 3;
-    if (score < -3) score = -3;
+    for (var j = 0; j < items.length; j++) {
+      var tok = items[j];
+      var w = weightString(rngBase, tok);
+      var pos = j / Math.max(1, items.length);
+      var p = 1;
+      var parts = tok.split(" ");
+      for (var k = 0; k < parts.length; k++) {
+        var pk = parts[k];
+        if (pk === "not" || pk === "no" || pk === "never" || pk.indexOf("n't") !== -1) p *= -1;
+      }
+      score += w * (0.9 + 0.3 * (1 - pos)) * p;
+    }
+    score = score / (1 + Math.log(tokens.length + 1) / 3);
+    if (score > 3.8) score = 3.8;
+    if (score < -3.8) score = -3.8;
     var yes = sigmoid(score);
     if (yes < 0.05) yes = 0.05;
     if (yes > 0.95) yes = 0.95;
     var conf = Math.max(yes, 1 - yes);
     return { verdict: yes >= 0.5 ? "yes" : "no", confidence: conf, yes: yes, source: "weights" };
+  }
+
+  function oracleRandom() {
+    var r = Math.random();
+    var yes = 0.05 + r * 0.9;
+    var conf = Math.max(yes, 1 - yes);
+    return { verdict: yes >= 0.5 ? "yes" : "no", confidence: conf, yes: yes, source: "random" };
+  }
+
+  function oracle(query) {
+    if (currentOracleMode === "random") return oracleRandom();
+    return oracleWeights(query);
   }
 
   var els = {
@@ -193,7 +238,23 @@
     bar.setAttribute("role", "img");
     bar.setAttribute("aria-label", o.verdict + ", " + pct + " percent confident");
     card.appendChild(bar);
-    card.appendChild(el("p", "detail", "An invented guess. The code turns your words into weights, adds a tiny bias, and maps through a sigmoid. Same question → same answer. It measures nothing."));
+    var detail = o.source === "random"
+      ? "Pure random guess each time. It's honest noise, not reasoning."
+      : "AI-ish guess (deterministic): turns words, bigrams, trigrams, 4-grams into weights, handles simple negation, normalizes by length, adds a tiny bias, maps through sigmoid. Same question -> same answer. Invented behavior, not evidence.";
+    card.appendChild(el("p", "detail", detail));
+    var toggle = el("p", "meta");
+    var label = el("label", null);
+    var cb = el("input");
+    cb.type = "checkbox";
+    cb.checked = currentOracleMode === "random";
+    cb.addEventListener("change", function () {
+      setOracleMode(cb.checked ? "random" : "weights");
+      ask(query);
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(" Use pure random (no AI guess)"));
+    toggle.appendChild(label);
+    card.appendChild(toggle);
     els.result.appendChild(card);
     document.title = o.verdict.toUpperCase() + " — i forgot again";
   }
