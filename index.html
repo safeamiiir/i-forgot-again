@@ -4,10 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>i forgot again</title>
-<meta name="description" content="A tiny notebook for the stupid-simple facts I keep forgetting. Ask, and it answers.">
+<meta name="description" content="A tiny notebook for the stupid-simple facts I keep forgetting. Ask, and it answers — from facts.js, or from a small model running in the browser.">
 <meta name="theme-color" content="#0b0c0e">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
+<!-- start fetching the model runtime early, before the first question -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://huggingface.co" crossorigin>
+<link rel="dns-prefetch" href="https://cdn-lfs.huggingface.co">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/+esm" crossorigin>
 </head>
 <body>
 
@@ -34,18 +39,12 @@
     <button class="vh" type="submit">Ask</button>
   </form>
 
-  <p class="hint" id="hint">
-    <span id="count"></span>
-    <span class="hint-sep" aria-hidden="true">·</span>
-    <button type="button" id="random" class="linkish">I don't remember what I forgot</button>
-  </p>
-
   <section class="result" id="result" aria-live="polite"></section>
 
 </main>
 
 <footer class="footer">
-  <p>Ask a question. If it's written down, you get an answer. If it's yes or no, you get a guess with a number attached. Otherwise, a blank stare.</p>
+  <p>Ask a question. If you've written it down in <code>facts.js</code>, you get that answer. Otherwise a small language model runs in this tab on WebGPU and answers. Nothing you type leaves the browser.</p>
 </footer>
 
 <script src="facts.js"></script>

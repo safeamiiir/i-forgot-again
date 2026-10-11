@@ -114,28 +114,6 @@ body {
   #q::placeholder { color: #b3b5b0; }
 }
 
-/* ---- hint line ---- */
-
-.hint {
-  margin: 0.85rem 0 0;
-  color: var(--dim);
-  font-size: 0.8125rem;
-}
-
-.hint-sep { padding: 0 0.4rem; opacity: 0.6; }
-
-.linkish {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--dim);
-  font: inherit;
-  cursor: pointer;
-  border-bottom: 1px dotted currentColor;
-}
-
-.linkish:hover { color: var(--accent); }
-
 /* ---- results ---- */
 
 .result { margin-top: 3rem; }
@@ -186,58 +164,7 @@ body {
   flex-wrap: wrap;
 }
 
-.card .meta .tag::before { content: "#"; opacity: 0.6; }
-
-/* ---- yes / no note inside a fact card ---- */
-
-.verdict-note {
-  margin: 0 0 1rem;
-  padding: 0.7rem 0.85rem;
-  background: var(--panel);
-  border: 1px solid var(--faint);
-  border-radius: 3px;
-}
-
-.verdict-note .vw {
-  display: block;
-  color: var(--accent);
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-bottom: 0.35rem;
-}
-
-.verdict-note p {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.card .answer.secondary {
-  font-size: 1rem;
-  color: var(--dim);
-}
-
-/* ---- the oracle ---- */
-
-.card.oracle { border-left-style: dashed; }
-
-.card.oracle .verdict {
-  margin: 0;
-  font-size: clamp(2.25rem, 12vw, 3.5rem);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-
-.card.oracle.is-yes .verdict { color: var(--accent); }
-.card.oracle.is-no .verdict { color: var(--ink); }
-
-.card.oracle .prob {
-  margin: 0.6rem 0 0;
-  color: var(--dim);
-  font-size: 0.875rem;
-}
+/* ---- progress bar (used by the model's loading state) ---- */
 
 .bar {
   margin: 0.5rem 0 0;
@@ -253,29 +180,66 @@ body {
   background: var(--accent);
 }
 
-.card.oracle.is-no .bar .fill { background: var(--dim); }
+/* ---- AI model answer ---- */
 
-/* ---- blank stare ---- */
-
-.blank {
-  color: var(--dim);
-  animation: rise 220ms ease-out both;
+.card.ai .ai-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+
+.card.ai .ai-text.thinking {
+  color: var(--dim);
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.card.ai .ai-text.thinking::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 0.2em;
+  background: currentColor;
+  transform: translateY(0.12em);
+  animation: caret-blink 1.05s steps(1) infinite;
+}
+
+@keyframes caret-blink { 50% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .blank { animation: none; }
+  .card.ai .ai-text.thinking::after { animation: none; }
 }
 
-.blank .lead { margin: 0; color: var(--ink); }
+.card.ai .ai-bar {
+  margin: 0.7rem 0 0;
+  height: 3px;
+}
 
-.blank .sub { margin: 0.6rem 0 0; font-size: 0.875rem; }
+.card.ai .ai-bar .fill {
+  width: 0;
+  transition: width 160ms ease;
+}
 
-.blank .suggest {
+.card.ai .ai-note {
+  margin: 0.6rem 0 0;
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
+.card.ai .ai-note:empty { display: none; }
+
+.card.ai.ai-error .ai-text { color: var(--dim); }
+
+.card.ai .suggest {
   margin: 0.9rem 0 0;
   font-size: 0.875rem;
+  color: var(--dim);
 }
 
-.blank .suggest button {
+.card.ai .suggest button {
   border: 0;
   padding: 0;
   background: none;
@@ -285,7 +249,18 @@ body {
   border-bottom: 1px solid currentColor;
 }
 
-.blank .suggest button:hover { opacity: 0.75; }
+.card.ai .suggest button:hover { opacity: 0.75; }
+
+.card .meta .badge {
+  color: var(--bg);
+  background: var(--accent);
+  padding: 0.05rem 0.4rem;
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.card .meta .meta-note { opacity: 0.85; }
 
 /* ---- footer ---- */
 

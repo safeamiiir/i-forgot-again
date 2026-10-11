@@ -2,67 +2,78 @@
 
 A tiny notebook for the stupid-simple facts I keep forgetting.
 
-You land on a blank prompt box. You type the half-remembered thing. If it's
-written down, you get the answer. If it isn't, you get a blank stare and a note
-to write it down next time.
+You land on a blank prompt box. You type the half-remembered thing. If you've
+written it down in `facts.js`, you get that answer back. If you haven't, a small
+model running in the page answers.
 
-The first entry is the one that started this: **who was the teacher, Plato or
-Socrates?**
+It ships with an empty `facts.js` on purpose. That one file is the whole
+database; every fact you add lives there.
 
 ## How it works
 
-Three paths, checked in order:
+A **fact always wins**. If what you typed matches a question in `facts.js`, you
+get it. Otherwise the question goes to a small language model running in this tab
+on **WebGPU**, streamed word by word.
+
+So there are two outcomes:
 
 1. **A fact matches** → the fact, from `facts.js`.
-2. **No fact, but it's a yes/no question** → the oracle: a verdict plus a probability.
-3. **Neither** → a blank stare.
+2. **No fact** → the on-device model's answer.
 
-No framework, no build step, no dependencies, no tracking. Three files do all
-the work:
+Nothing is remembered between visits.
+
+No framework, no build step. Three local files do all the work:
 
 | File | Job |
 | --- | --- |
 | `facts.js` | The data. Every fact lives in one array. |
-| `app.js` | The matcher and the very light word→weights oracle. All offline. |
+| `app.js` | The fact matcher and the on-device model. |
 | `styles.css` | The look. Dark by default, light if your OS asks. |
 
-Everything runs in the browser. Nothing you type is sent anywhere.
+Everything runs in the browser, including the model. **Nothing you type is sent
+anywhere.**
 
-## The oracle
+## The AI model
 
-Ask anything starting with *is / are / was / were / do / does / did / can /
-could / will / would / should / has / have / had*, or anything ending in
-*or not*, and you get a YES or NO with a percentage.
+The app runs a real (if very small) language model **inside the page**, on your
+GPU, using [transformers.js](https://huggingface.co/docs/transformers.js) over
+WebGPU. There is no server and no API key.
 
-Be clear about what that is: **an invented guess.** The question you typed
-is turned into words→weights (tokens + bigrams + trigrams), given a tiny seeded
-bias, and passed through a sigmoid to get a number between 5% and 95%. Consequences worth knowing:
+- **Model:** `HuggingFaceTB/SmolLM2-360M-Instruct`, 4-bit (`q4f16`), about
+  260 MB. Downloading starts in the background as soon as the page is idle, and
+  the browser caches it afterward.
+- **Library:** imported straight from a CDN, no bundler:
+  `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/+esm`.
+- **Output:** streamed token by token into the card.
 
-- The same question always gets the same answer. That's deterministic, not
-  the oracle remembering anything.
-- Rephrasing the question gives a different answer.
-- It is capped at 95%, because something with no knowledge has no business
-  being certain.
+## Preloading the model
 
-The UI says all of this out loud on the result itself. It is not pretending.
+Waiting for a 260 MB download *after* you press enter feels broken, so the app
+starts early:
 
-## Step 2: a very light JS "AI"
+- **Resource hints** in `index.html` (`preconnect`, `dns-prefetch`,
+  `modulepreload`) begin the connection and the runtime fetch as the page loads.
+- **Background warm-up.** When the page is idle — and again the moment you focus
+  the input — the app loads the model and runs a one-token generation to compile
+  the GPU pipelines, before you ask anything.
+- **Guards.** Warm-up is skipped when there is no WebGPU, when the browser reports
+  `saveData`, on `2g`/`3g` connections, or on very low-memory devices. One
+  pipeline never runs two generations at once.
+- **Caching.** After the first load the weights live in the browser's Cache API,
+  so later visits skip the download and only pay the session build — which the
+  warm-up now does for you in the background.
 
-It just **turns words into weights**.
+To turn preloading off entirely, remove the `scheduleWarm()` call at the bottom
+of `app.js`.
 
-1. Normalize the question (lowercase, strip punctuation).
-2. Split into tokens, also look at bigrams and trigrams.
-3. Map each token/gram to a tiny deterministic weight using a seeded PRNG (same question → same weights). No network, no model files.
-4. Weight by length and position (early words matter a bit more).
-5. Sum into a single score, add a small seeded bias, pass through a sigmoid to get `p(yes)` between 0.05 and 0.95.
-6. Clamp confidence to ≤ 95%.
+To use a bigger, better model, change `MODEL_ID` (and `MODEL_LABEL` / `MODEL_MB`)
+in `app.js`. `onnx-community/Qwen2.5-0.5B-Instruct` is a good step up
+(~460 MB).
 
-It's invented behavior, not evidence about the world. The card says that out loud. No download, no build step, just plain JS.
-
-## Adding a fact
-
-Open `facts.js`, copy the shape, fill it in, save, refresh. That's the whole
-workflow.
+**Two things to expect.** WebGPU support is ~85% of browsers; where it is
+missing (or the GPU adapter can't be created) the card says so. And "small" means
+small: a 360M model answers simple questions and can be confidently wrong on
+anything harder — treat it as a better guess, not an oracle.
 
 ## Adding a fact
 
@@ -71,25 +82,16 @@ workflow.
 
 ```js
 {
-  id: "plato-socrates",                  // the URL becomes index.html#plato-socrates
   question: "Who was the teacher, Plato or Socrates?",
   answer:   "Socrates was the teacher. Plato was the student.",
-  detail:   "One or two extra sentences, if you have them.",
-  yesNoAnswer: "Shown instead of a guess when you ask this as a yes/no question.",
-  keywords: ["plato", "socrates", "teacher", "student", "greek", "philosophy"],
-  tags:     ["philosophy", "history"]
+  detail:   "One or two extra sentences, if you have them."
 }
 ```
 
-`keywords` is the search engine. Put in the words you would actually type,
-including the wrong guesses you keep making. That's why `teacher` and `student`
-are in the Plato entry even though the question already contains them.
-
-`yesNoAnswer` is optional and exists for one reason: a hash cannot tell whether
-you meant *"was Socrates the teacher of Plato"* or *"was Plato the teacher of
-Socrates"*. Both contain the same words. So when your question is a yes/no one
-and it hits this fact, your hand-written sentence answers it instead of the
-oracle guessing. Write it yourself.
+A fact has three fields and no more. `question` is what you'll type back in —
+case and punctuation don't matter, and the answer only appears when the question
+matches. `answer` is the reply. `detail` is the optional "more info" line under
+it.
 
 ## Running it locally
 
