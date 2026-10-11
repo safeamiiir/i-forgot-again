@@ -3,9 +3,8 @@
 A tiny notebook for the stupid-simple facts I keep forgetting.
 
 You land on a blank prompt box. You type the half-remembered thing. If you've
-written it down in `facts.js`, you get that answer back. If you haven't, the
-question goes to the model — or, on the built-in engine, you get a blank stare
-and a nudge to write it down.
+written it down in `facts.js`, you get that answer back. If you haven't, a small
+model running in the page answers.
 
 It ships with an empty `facts.js` on purpose. That one file is the whole
 database; every fact you add lives there.
@@ -13,72 +12,32 @@ database; every fact you add lives there.
 ## How it works
 
 A **fact always wins**. If what you typed matches a question in `facts.js`, you
-get it, whatever the toggle says.
+get it. Otherwise the question goes to a small language model running in this tab
+on **WebGPU**, streamed word by word.
 
-Otherwise the "answer with" toggle decides who answers:
-
-| Side | Who answers | Notes |
-| --- | --- | --- |
-| **AI model** (default) | a small language model running in this tab on **WebGPU** | Answers any question. Preloads in the background (~260 MB, once). Nothing is uploaded. |
-| **built-in** | the page's own word-weight guesser | A yes/no guess for yes/no questions, a blank stare for everything else. Zero download. |
-
-So there are four outcomes, checked in order:
+So there are two outcomes:
 
 1. **A fact matches** → the fact, from `facts.js`.
-2. **AI mode, no fact** → the on-device model's answer, streamed word by word.
-3. **Built-in mode, yes/no question** → the oracle: a verdict plus a probability.
-4. **Built-in mode, anything else** → a blank stare.
+2. **No fact** → the on-device model's answer.
 
-The toggle always starts on **AI model** and isn't remembered between visits —
-reload and you're back to the default.
+Nothing is remembered between visits.
 
 No framework, no build step. Three local files do all the work:
 
 | File | Job |
 | --- | --- |
 | `facts.js` | The data. Every fact lives in one array. |
-| `app.js` | The matcher, the on-device model, and the word→weights oracle. |
+| `app.js` | The fact matcher and the on-device model. |
 | `styles.css` | The look. Dark by default, light if your OS asks. |
 
 Everything runs in the browser, including the model. **Nothing you type is sent
-anywhere**, by either engine.
+anywhere.**
 
-## The built-in oracle
+## The AI model
 
-This is the `built-in` side of the toggle. Ask anything starting with *is / are / was / were / do / does / did / can /
-could / will / would / should / has / have / had*, or anything ending in
-*or not*, and you get a YES or NO with a percentage.
-
-Be clear about what that is: **an invented guess.** The question you typed
-is turned into words→weights (tokens + bigrams + trigrams), given a tiny seeded
-bias, and passed through a sigmoid to get a number between 5% and 95%. Consequences worth knowing:
-
-- The same question always gets the same answer. That's deterministic, not
-  the oracle remembering anything.
-- Rephrasing the question gives a different answer.
-- It is capped at 95%, because something with no knowledge has no business
-  being certain.
-
-The UI says all of this out loud on the result itself. It is not pretending.
-
-## Step 2: a very light JS "AI"
-
-It just **turns words into weights**.
-
-1. Normalize the question (lowercase, strip punctuation).
-2. Split into tokens, also look at bigrams and trigrams.
-3. Map each token/gram to a tiny deterministic weight using a seeded PRNG (same question → same weights). No network, no model files.
-4. Weight by length and position (early words matter a bit more).
-5. Sum into a single score, add a small seeded bias, pass through a sigmoid to get `p(yes)` between 0.05 and 0.95.
-6. Clamp confidence to ≤ 95%.
-
-It's invented behavior, not evidence about the world. The card says that out loud. No download, no build step, just plain JS.
-
-## The AI model side
-
-The default engine runs a real (if very small) language model **inside the
-page**, on your GPU, using [transformers.js](https://huggingface.co/docs/transformers.js)
-over WebGPU. There is no server and no API key.
+The app runs a real (if very small) language model **inside the page**, on your
+GPU, using [transformers.js](https://huggingface.co/docs/transformers.js) over
+WebGPU. There is no server and no API key.
 
 - **Model:** `HuggingFaceTB/SmolLM2-360M-Instruct`, 4-bit (`q4f16`), about
   260 MB. Downloading starts in the background as soon as the page is idle, and
@@ -96,12 +55,10 @@ starts early:
   `modulepreload`) begin the connection and the runtime fetch as the page loads.
 - **Background warm-up.** When the page is idle — and again the moment you focus
   the input — the app loads the model and runs a one-token generation to compile
-  the GPU pipelines, before you ask anything. A small status next to the toggle
-  reads `loading …` then `model ready`.
-- **Guards.** Warm-up is skipped when the toggle is on **built-in**, when there
-  is no WebGPU, when the browser reports `saveData`, on `2g`/`3g` connections, or
-  on very low-memory devices. It never runs while a real question is being
-  answered, and one pipeline never runs two generations at once.
+  the GPU pipelines, before you ask anything.
+- **Guards.** Warm-up is skipped when there is no WebGPU, when the browser reports
+  `saveData`, on `2g`/`3g` connections, or on very low-memory devices. One
+  pipeline never runs two generations at once.
 - **Caching.** After the first load the weights live in the browser's Cache API,
   so later visits skip the download and only pay the session build — which the
   warm-up now does for you in the background.
@@ -111,16 +68,12 @@ of `app.js`.
 
 To use a bigger, better model, change `MODEL_ID` (and `MODEL_LABEL` / `MODEL_MB`)
 in `app.js`. `onnx-community/Qwen2.5-0.5B-Instruct` is a good step up
-(~460 MB). To make the offline word-weight answerer the default instead, change
-the `currentEngine` initial value in `app.js` from `ENGINE_AI` to `ENGINE_LOCAL`.
+(~460 MB).
 
 **Two things to expect.** WebGPU support is ~85% of browsers; where it is
-missing (or the GPU adapter can't be created) the card says so and offers the
-built-in. And "small" means small: a 360M model answers simple questions and
-can be confidently wrong on anything harder — treat it as a better guess, not
-an oracle.
-
-
+missing (or the GPU adapter can't be created) the card says so. And "small" means
+small: a 360M model answers simple questions and can be confidently wrong on
+anything harder — treat it as a better guess, not an oracle.
 
 ## Adding a fact
 

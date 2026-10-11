@@ -114,62 +114,6 @@ body {
   #q::placeholder { color: #b3b5b0; }
 }
 
-/* ---- answer engine toggle ---- */
-
-.engine {
-  margin: 1.15rem 0 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.engine-cap {
-  color: var(--dim);
-  font-size: 0.8125rem;
-}
-
-.engine-switch {
-  display: inline-flex;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--faint);
-  border-radius: 999px;
-  background: var(--panel);
-}
-
-.engine-opt {
-  border: 0;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  background: none;
-  color: var(--dim);
-  font: inherit;
-  font-size: 0.75rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease;
-}
-
-.engine-opt:hover { color: var(--ink); }
-
-.engine-opt:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.engine-opt.is-on {
-  color: var(--bg);
-  background: var(--accent);
-}
-
-.engine-status {
-  color: var(--dim);
-  font-size: 0.75rem;
-}
-
-.engine-status:empty { display: none; }
-
 /* ---- results ---- */
 
 .result { margin-top: 3rem; }
@@ -220,26 +164,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* ---- the oracle ---- */
-
-.card.oracle { border-left-style: dashed; }
-
-.card.oracle .verdict {
-  margin: 0;
-  font-size: clamp(2.25rem, 12vw, 3.5rem);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-
-.card.oracle.is-yes .verdict { color: var(--accent); }
-.card.oracle.is-no .verdict { color: var(--ink); }
-
-.card.oracle .prob {
-  margin: 0.6rem 0 0;
-  color: var(--dim);
-  font-size: 0.875rem;
-}
+/* ---- progress bar (used by the model's loading state) ---- */
 
 .bar {
   margin: 0.5rem 0 0;
@@ -254,8 +179,6 @@ body {
   height: 100%;
   background: var(--accent);
 }
-
-.card.oracle.is-no .bar .fill { background: var(--dim); }
 
 /* ---- AI model answer ---- */
 
@@ -337,45 +260,7 @@ body {
   text-transform: uppercase;
 }
 
-.card.oracle .meta .badge {
-  color: var(--ink);
-  background: none;
-  border: 1px solid var(--faint);
-}
-
 .card .meta .meta-note { opacity: 0.85; }
-
-/* ---- blank stare ---- */
-
-.blank {
-  color: var(--dim);
-  animation: rise 220ms ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .blank { animation: none; }
-}
-
-.blank .lead { margin: 0; color: var(--ink); }
-
-.blank .sub { margin: 0.6rem 0 0; font-size: 0.875rem; }
-
-.blank .suggest {
-  margin: 0.9rem 0 0;
-  font-size: 0.875rem;
-}
-
-.blank .suggest button {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-  border-bottom: 1px solid currentColor;
-}
-
-.blank .suggest button:hover { opacity: 0.75; }
 
 /* ---- footer ---- */
 
