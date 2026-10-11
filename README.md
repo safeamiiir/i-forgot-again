@@ -80,11 +80,33 @@ page**, on your GPU, using [transformers.js](https://huggingface.co/docs/transfo
 over WebGPU. There is no server and no API key.
 
 - **Model:** `HuggingFaceTB/SmolLM2-360M-Instruct`, 4-bit (`q4f16`), about
-  260 MB. It downloads the first time you ask, with a progress bar, then the
-  browser caches it.
+  260 MB. Downloading starts in the background as soon as the page is idle, and
+  the browser caches it afterward.
 - **Library:** imported straight from a CDN, no bundler:
   `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/+esm`.
 - **Output:** streamed token by token into the card.
+
+## Preloading the model
+
+Waiting for a 260 MB download *after* you press enter feels broken, so the app
+starts early:
+
+- **Resource hints** in `index.html` (`preconnect`, `dns-prefetch`,
+  `modulepreload`) begin the connection and the runtime fetch as the page loads.
+- **Background warm-up.** When the page is idle — and again the moment you focus
+  the input — the app loads the model and runs a one-token generation to compile
+  the GPU pipelines, before you ask anything. A small status next to the toggle
+  reads `loading …` then `model ready`.
+- **Guards.** Warm-up is skipped when the toggle is on **built-in**, when there
+  is no WebGPU, when the browser reports `saveData`, on `2g`/`3g` connections, or
+  on very low-memory devices. It never runs while a real question is being
+  answered, and one pipeline never runs two generations at once.
+- **Caching.** After the first load the weights live in the browser's Cache API,
+  so later visits skip the download and only pay the session build — which the
+  warm-up now does for you in the background.
+
+To turn preloading off entirely, remove the `scheduleWarm()` call at the bottom
+of `app.js`.
 
 To use a bigger, better model, change `MODEL_ID` (and `MODEL_LABEL` / `MODEL_MB`)
 in `app.js`. `onnx-community/Qwen2.5-0.5B-Instruct` is a good step up

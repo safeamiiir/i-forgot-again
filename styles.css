@@ -185,6 +185,13 @@ body {
   background: var(--accent);
 }
 
+.engine-status {
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
+.engine-status:empty { display: none; }
+
 /* ---- results ---- */
 
 .result { margin-top: 3rem; }

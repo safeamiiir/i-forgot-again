@@ -107,6 +107,10 @@
   var aiLoad = null;       // in-flight load promise
   var aiProgress = [];     // progress listeners waiting on the in-flight load
   var aiSeq = 0;           // guards against stale answers
+  var aiQueue = Promise.resolve(); // serializes generations (warm-up vs. real question)
+  var aiWarming = false;   // a background preload is running
+  var aiWarmed = false;    // the model is loaded and its pipelines compiled
+  var aiBusyWithQuestion = false; // a real question is being answered (keep the status quiet)
 
   function hasWebGPU() {
     return typeof navigator !== "undefined" &&
@@ -153,6 +157,73 @@
         throw err;
       });
     return aiLoad;
+  }
+
+  /* One pipeline, one generation at a time. The background warm-up and a real
+   * question must not run on the same session together. */
+  function generate(gen, messages, opts) {
+    var run = aiQueue.then(function () { return gen(messages, opts); });
+    aiQueue = run.then(function () {}, function () {});
+    return run;
+  }
+
+  function setStatus(msg) {
+    if (!els.engineStatus) return;
+    els.engineStatus.textContent = msg || "";
+  }
+
+  /* Preload: fetch the runtime, the weights, and build the WebGPU session before
+   * anyone asks. A one-token run compiles the GPU pipelines too. */
+  function warmAI() {
+    if (currentEngine !== ENGINE_AI) return;
+    if (!hasWebGPU()) return;
+    if (aiWarmed || aiWarming) return;
+    if (aiBusyWithQuestion) return;
+    if (aiGenerator) { aiWarmed = true; return; }
+
+    var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || "") || c.effectiveType === "3g")) return;
+    if (typeof navigator.deviceMemory === "number" && navigator.deviceMemory > 0 && navigator.deviceMemory < 4) return;
+
+    aiWarming = true;
+    setStatus("loading " + MODEL_LABEL + "…");
+
+    loadModel(function (p) {
+      if (!aiWarming || currentEngine !== ENGINE_AI) return;
+      if (p && p.status === "progress" && typeof p.progress === "number") {
+        setStatus("loading " + MODEL_LABEL + "… " + Math.round(p.progress) + "%");
+      }
+    })
+      .then(function (gen) {
+        if (currentEngine !== ENGINE_AI) return;
+        return generate(gen, [{ role: "user", content: "hi" }], {
+          max_new_tokens: 1,
+          do_sample: false
+        });
+      })
+      .then(function () {
+        aiWarming = false;
+        aiWarmed = true;
+        if (aiBusyWithQuestion) {
+          setStatus("");
+        } else {
+          setStatus("model ready");
+          setTimeout(function () { if (!aiBusyWithQuestion) setStatus(""); }, 4000);
+        }
+      })
+      .catch(function () {
+        aiWarming = false;
+        setStatus("");
+      });
+  }
+
+  function scheduleWarm() {
+    var run = function () { warmAI(); };
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 3000 });
+    } else {
+      setTimeout(run, 1500);
+    }
   }
 
   function oracleWeights(query) {
@@ -210,7 +281,8 @@
     result: document.getElementById("result"),
     count: document.getElementById("count"),
     random: document.getElementById("random"),
-    engine: document.getElementById("engine")
+    engine: document.getElementById("engine"),
+    engineStatus: document.getElementById("engine-status")
   };
 
   function normalize(s) {
@@ -388,6 +460,8 @@
   function askAI(query) {
     var seq = aiSeq;
     var st = renderAIShell(query);
+    aiBusyWithQuestion = true;
+    setStatus("");
 
     loadModel(function (p) {
       if (seq !== aiSeq) return;
@@ -418,7 +492,7 @@
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: query }
         ];
-        return gen(messages, {
+        return generate(gen, messages, {
           max_new_tokens: 220,
           do_sample: true,
           temperature: 0.6,
@@ -428,10 +502,14 @@
         });
       })
       .then(function () {
+        aiBusyWithQuestion = false;
+        aiWarmed = true;
+        aiWarming = false;
         if (seq !== aiSeq) return;
         finishAI(st);
       })
       .catch(function (err) {
+        aiBusyWithQuestion = false;
         if (seq !== aiSeq) return;
         if (err && err.name === "AbortError") return;
         renderAIError(query, err);
@@ -501,6 +579,11 @@
     aiSeq++;
     try { localStorage.setItem(ENGINE_KEY, mode); } catch (e) {}
     renderEngine();
+    if (mode === ENGINE_LOCAL) {
+      setStatus("");
+    } else {
+      scheduleWarm();
+    }
   }
 
   function randomFact() {
@@ -513,6 +596,13 @@
   els.form.addEventListener("submit", function (e) { e.preventDefault(); ask(); });
   if (els.random) els.random.addEventListener("click", randomFact);
 
+  // start loading the model as soon as someone shows intent to ask
+  if (els.input) {
+    var warmOnIntent = function () { scheduleWarm(); };
+    els.input.addEventListener("focus", warmOnIntent, { once: true });
+    els.input.addEventListener("pointerdown", warmOnIntent, { once: true });
+  }
+
   if (els.engine) {
     els.engine.addEventListener("click", function (e) {
       var btn = e.target && e.target.closest ? e.target.closest(".engine-opt") : null;
@@ -524,6 +614,7 @@
     });
   }
   renderEngine();
+  scheduleWarm();
 
   function updateCount() {
     if (els.count) els.count.textContent = FACTS.length + " fact" + (FACTS.length === 1 ? "" : "s");
