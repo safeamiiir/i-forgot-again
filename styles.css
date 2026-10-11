@@ -188,6 +188,73 @@ body {
 
 .card .meta .tag::before { content: "#"; opacity: 0.6; }
 
+/* ---- yes / no note inside a fact card ---- */
+
+.verdict-note {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--panel);
+  border: 1px solid var(--faint);
+  border-radius: 3px;
+}
+
+.verdict-note .vw {
+  display: block;
+  color: var(--accent);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.verdict-note p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.card .answer.secondary {
+  font-size: 1rem;
+  color: var(--dim);
+}
+
+/* ---- the oracle ---- */
+
+.card.oracle { border-left-style: dashed; }
+
+.card.oracle .verdict {
+  margin: 0;
+  font-size: clamp(2.25rem, 12vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.card.oracle.is-yes .verdict { color: var(--accent); }
+.card.oracle.is-no .verdict { color: var(--ink); }
+
+.card.oracle .prob {
+  margin: 0.6rem 0 0;
+  color: var(--dim);
+  font-size: 0.875rem;
+}
+
+.bar {
+  margin: 0.5rem 0 0;
+  height: 3px;
+  max-width: 22rem;
+  background: var(--faint);
+  overflow: hidden;
+}
+
+.bar .fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.card.oracle.is-no .bar .fill { background: var(--dim); }
+
 /* ---- blank stare ---- */
 
 .blank {

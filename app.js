@@ -1,8 +1,23 @@
 /* app.js — the whole app. Reads window.FACTS, matches what you type, draws the answer.
  *
+ * Three paths, in priority order:
+ *
+ *   1. a fact matches            -> the fact, from facts.js
+ *   2. else, a yes/no question   -> the oracle: a verdict plus a probability
+ *   3. else                      -> a blank stare
+ *
+ * ---------------------------------------------------------------------------
+ * STEP 2 GOES HERE.
+ * The oracle below is a hash, not an opinion. It cannot know anything. To make
+ * it real, swap the body of oracle() for a call into a light in-browser model
+ * (Transformers.js / WebLLM) and keep the same return shape:
+ *     { verdict: "yes" | "no", confidence: 0..1, yes: 0..1, source: "model" }
+ * Everything downstream reads that shape, so nothing else has to change.
+ * ---------------------------------------------------------------------------
+ *
  * Matching is deliberately dumb and offline: exact keyword hits score highest,
  * partial hits score lower, and words in the question text score a little.
- * There is no AI here and nothing leaves the page.
+ * Nothing you type ever leaves the page.
  */
 
 (function () {
@@ -23,6 +38,20 @@
     why: 1, will: 1, with: 1, you: 1, your: 1, again: 1, forgot: 1,
     forget: 1, remember: 1, knew: 1, know: 1, tell: 1, say: 1,
     please: 1, thing: 1, things: 1, name: 1, called: 1
+  };
+
+  /* A question is yes/no if it opens with one of these. Keys are the letters
+     only, so "isn't" and "won't" fold down to "isnt" and "wont". */
+  var YESNO_HEADS = {
+    is: 1, are: 1, was: 1, were: 1, am: 1, do: 1, does: 1, did: 1,
+    can: 1, could: 1, will: 1, would: 1, should: 1, shall: 1, may: 1,
+    might: 1, must: 1, has: 1, have: 1, had: 1, isnt: 1, arent: 1,
+    wasnt: 1, werent: 1, dont: 1, doesnt: 1, didnt: 1, cant: 1, couldnt: 1,
+    wont: 1, wouldnt: 1, shouldnt: 1, hasnt: 1, havent: 1, hadnt: 1
+  };
+
+  var WH_HEADS = {
+    who: 1, what: 1, when: 1, where: 1, why: 1, how: 1, which: 1, whose: 1
   };
 
   var MAX = 10;      // score ceiling for one word, keeps one loud word from winning alone
@@ -63,6 +92,11 @@
     return out;
   }
 
+  function firstWord(text) {
+    var m = String(text).toLowerCase().match(/[a-z']+/);
+    return m ? m[0].replace(/['\u2019]/g, "") : "";
+  }
+
   /* Cheap stemmer: enough to catch "teachers" -> "teacher". */
   function stem(word) {
     if (word.length > 4 && /ies$/.test(word)) return word.slice(0, -3) + "y";
@@ -82,6 +116,46 @@
     return false;
   }
 
+  function looksYesNo(text) {
+    var raw = String(text == null ? "" : text).trim();
+    if (!raw) return false;
+    if (/\bor not\b/i.test(raw)) return true;
+    return !!YESNO_HEADS[firstWord(raw)];
+  }
+
+  function looksWh(text) {
+    return !!WH_HEADS[firstWord(text)];
+  }
+
+  /* ---------------------------------------------------------------------------
+     THE ORACLE (step 1)
+     A deterministic hash. Same words in, same answer out, forever. It is honest
+     about being arbitrary, and it never claims more than 95% certainty, because
+     something with no knowledge has no business being sure.
+     --------------------------------------------------------------------------- */
+
+  function hash32(text) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return h >>> 0;
+  }
+
+  function oracle(question) {
+    var key = normalize(question);
+    var u = hash32(key) / 4294967296;           // 0 .. 1, stable per question
+    var yes = 0.05 + u * 0.90;                  // 5% .. 95%, never certain
+    var verdict = yes >= 0.5 ? "yes" : "no";
+    return {
+      verdict: verdict,
+      confidence: verdict === "yes" ? yes : 1 - yes,
+      yes: yes,
+      source: "hash"
+    };
+  }
+
   /* ---------- scoring ---------- */
 
   function scoreFact(fact, terms) {
@@ -90,7 +164,6 @@
       [fact.question, fact.answer, fact.detail, (fact.tags || []).join(" ")].join(" ")
     );
     var total = 0;
-    var hits = [];
 
     for (var i = 0; i < terms.length; i++) {
       var term = terms[i];
@@ -102,15 +175,10 @@
       }
 
       if (!best && haystack.indexOf(term) !== -1) best = LOOSE;
-
-      if (best) {
-        best = Math.min(best, MAX);
-        total += best;
-        hits.push(term);
-      }
+      if (best) total += Math.min(best, MAX);
     }
 
-    return { total: total, hits: hits };
+    return total;
   }
 
   function find(query) {
@@ -118,19 +186,12 @@
     if (!terms.length) return null;
 
     var ranked = FACTS.map(function (fact) {
-      var s = scoreFact(fact, terms);
-      return { fact: fact, score: s.total, hits: s.hits };
+      return { fact: fact, score: scoreFact(fact, terms) };
     }).sort(function (a, b) { return b.score - a.score; });
 
     var top = ranked[0];
     if (!top || top.score < NEAR) return null;
-
-    return {
-      fact: top.fact,
-      score: top.score,
-      confident: top.score >= PRESET,
-      runnerUp: ranked[1] && ranked[1].score > 0 ? ranked[1] : null
-    };
+    return { fact: top.fact, score: top.score, confident: top.score >= PRESET };
   }
 
   /* ---------- rendering ---------- */
@@ -142,52 +203,45 @@
     return node;
   }
 
+  function askedLine(query) {
+    var p = el("p", "asked");
+    if (query) {
+      p.appendChild(document.createTextNode("you asked: "));
+      p.appendChild(el("span", "echo", normalCase(query)));
+    } else {
+      p.appendChild(document.createTextNode("a thing you forgot, drawn at random"));
+    }
+    return p;
+  }
+
+  /* Typed input keeps the user's casing; this only tidies a leading lowercase. */
+  function normalCase(text) {
+    var t = String(text).trim().replace(/\s+/g, " ");
+    return t.charAt(0).toLowerCase() + t.slice(1);
+  }
+
   function clear() {
     els.result.textContent = "";
     if (location.hash) {
       history.replaceState(null, "", location.pathname + location.search);
     }
+    document.title = "i forgot again";
   }
 
-  function render(query, match) {
+  function renderFact(query, fact, verdictNote) {
     els.result.textContent = "";
-
-    if (!match) {
-      var blank = el("div", "blank");
-      blank.appendChild(el("p", "lead", "Nothing written down for that yet."));
-      blank.appendChild(
-        el("p", "sub", "Which is on me, not on you. The next time you remember it, add it to facts.js.")
-      );
-
-      if (FACTS.length) {
-        var suggest = el("p", "suggest");
-        suggest.appendChild(document.createTextNode("Closest thing I do have: "));
-        var b = el("button", null, FACTS[0].question);
-        b.type = "button";
-        b.addEventListener("click", function () {
-          els.input.value = FACTS[0].question;
-          render(FACTS[0].question, { fact: FACTS[0], confident: true, runnerUp: null });
-        });
-        suggest.appendChild(b);
-        blank.appendChild(suggest);
-      }
-      els.result.appendChild(blank);
-      return;
-    }
-
-    var fact = match.fact;
     var card = el("article", "card");
 
-    var asked = el("p", "asked");
-    if (query) {
-      asked.appendChild(document.createTextNode("you asked: "));
-      asked.appendChild(el("span", "echo", normalCase(query)));
-    } else {
-      asked.appendChild(document.createTextNode("a thing you forgot, drawn at random"));
-    }
-    card.appendChild(asked);
+    card.appendChild(askedLine(query));
 
-    card.appendChild(el("p", "answer", fact.answer));
+    if (verdictNote) {
+      var box = el("div", "verdict-note");
+      box.appendChild(el("span", "vw", "yes / no"));
+      box.appendChild(el("p", null, verdictNote));
+      card.appendChild(box);
+    }
+
+    card.appendChild(el("p", verdictNote ? "answer secondary" : "answer", fact.answer));
 
     if (fact.detail) card.appendChild(el("p", "detail", fact.detail));
 
@@ -203,10 +257,66 @@
     document.title = fact.question + " — i forgot again";
   }
 
-  /* Typed input keeps the user's casing; this only tidies a leading lowercase. */
-  function normalCase(text) {
-    var t = String(text).trim().replace(/\s+/g, " ");
-    return t.charAt(0).toLowerCase() + t.slice(1);
+  function renderOracle(query, o) {
+    els.result.textContent = "";
+
+    var card = el("article", "card oracle is-" + o.verdict);
+    card.appendChild(askedLine(query));
+
+    card.appendChild(el("p", "verdict", o.verdict.toUpperCase()));
+
+    var pct = Math.round(o.confidence * 100);
+    card.appendChild(el("p", "prob", pct + "% confident"));
+
+    var bar = el("div", "bar");
+    var fill = el("span", "fill");
+    fill.style.width = pct + "%";
+    bar.appendChild(fill);
+    bar.setAttribute("role", "img");
+    bar.setAttribute("aria-label", o.verdict + ", " + pct + " percent confident");
+    card.appendChild(bar);
+
+    var note = el("p", "detail");
+    note.appendChild(document.createTextNode(
+      "No model behind this yet. It is a hash of your words, so the same question always " +
+      "gets the same answer \u2014 that is a property of the code, not evidence about the " +
+      "world. A real one lands next."
+    ));
+    card.appendChild(note);
+
+    els.result.appendChild(card);
+    document.title = o.verdict.toUpperCase() + " — i forgot again";
+  }
+
+  function renderBlank(query) {
+    els.result.textContent = "";
+
+    var blank = el("div", "blank");
+    blank.appendChild(el("p", "lead", "Nothing written down for that yet."));
+
+    if (looksWh(query)) {
+      blank.appendChild(el("p", "sub",
+        "I can only do two things right now: facts in facts.js, and yes/no questions. " +
+        "Try flipping that into one: \u201cis \u2026 ?\u201d"));
+    } else {
+      blank.appendChild(el("p", "sub",
+        "Which is on me, not on you. The next time you remember it, add it to facts.js."));
+    }
+
+    if (FACTS.length) {
+      var suggest = el("p", "suggest");
+      suggest.appendChild(document.createTextNode("Closest thing I do have: "));
+      var b = el("button", null, FACTS[0].question);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        els.input.value = FACTS[0].question;
+        renderFact(FACTS[0].question, FACTS[0], null);
+      });
+      suggest.appendChild(b);
+      blank.appendChild(suggest);
+    }
+
+    els.result.appendChild(blank);
   }
 
   function countLabel() {
@@ -214,19 +324,33 @@
     els.count.textContent = n === 1 ? "1 thing written down" : n + " things written down";
   }
 
-  /* ---------- wiring ---------- */
+  /* ---------- the decision ---------- */
 
   function ask(query) {
     var cleaned = String(query == null ? "" : query).trim();
     if (!cleaned) { clear(); return; }
 
     var match = find(cleaned);
-    render(cleaned, match);
+    var yn = looksYesNo(cleaned);
+
     if (match) {
+      var note = (yn && match.fact.yesNoAnswer) ? match.fact.yesNoAnswer : null;
+      renderFact(cleaned, match.fact, note);
       history.replaceState(null, "", "#" + match.fact.id);
-      document.title = match.fact.question + " — i forgot again";
+      return;
     }
+
+    if (yn) {
+      renderOracle(cleaned, oracle(cleaned));
+      if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+      return;
+    }
+
+    renderBlank(cleaned);
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   }
+
+  /* ---------- wiring ---------- */
 
   els.form.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -249,7 +373,6 @@
 
   els.random.addEventListener("click", function () {
     if (!FACTS.length) return;
-    // Never repeat the fact that's already on screen.
     var pool = FACTS;
     if (FACTS.length > 1 && els.result.querySelector(".card")) {
       var shown = location.hash.replace("#", "");
@@ -258,9 +381,8 @@
     var pick = pool[Math.floor(Math.random() * pool.length)];
     els.input.value = "";
     els.input.placeholder = pick.question;
-    render("", { fact: pick, confident: true, runnerUp: null });
+    renderFact("", pick, null);
     history.replaceState(null, "", "#" + pick.id);
-    document.title = pick.question + " — i forgot again";
   });
 
   document.addEventListener("keydown", function (event) {
@@ -279,7 +401,7 @@
     if (!id) return;
     for (var i = 0; i < FACTS.length; i++) {
       if (FACTS[i].id === id) {
-        render(FACTS[i].question, { fact: FACTS[i], confident: true, runnerUp: null });
+        renderFact(FACTS[i].question, FACTS[i], null);
         return;
       }
     }
