@@ -23,7 +23,7 @@ the work:
 | File | Job |
 | --- | --- |
 | `facts.js` | The data. Every fact lives in one array. |
-| `app.js` | The matcher and the oracle. All offline. |
+| `app.js` | The matcher and the very light word→weights oracle. All offline. |
 | `styles.css` | The look. Dark by default, light if your OS asks. |
 
 Everything runs in the browser. Nothing you type is sent anywhere.
@@ -34,36 +34,35 @@ Ask anything starting with *is / are / was / were / do / does / did / can /
 could / will / would / should / has / have / had*, or anything ending in
 *or not*, and you get a YES or NO with a percentage.
 
-Be clear about what that is: **a hash, not an opinion.** The question you typed
-is hashed into a number between 5% and 95%, and the verdict follows from which
-side of 50% it lands on. Consequences worth knowing:
+Be clear about what that is: **an invented guess.** The question you typed
+is turned into words→weights (tokens + bigrams + trigrams), given a tiny seeded
+bias, and passed through a sigmoid to get a number between 5% and 95%. Consequences worth knowing:
 
-- The same question always gets the same answer. That's the hash being stable,
-  not the oracle remembering anything.
-- Rephrasing the question gives a completely different answer.
+- The same question always gets the same answer. That's deterministic, not
+  the oracle remembering anything.
+- Rephrasing the question gives a different answer.
 - It is capped at 95%, because something with no knowledge has no business
   being certain.
 
 The UI says all of this out loud on the result itself. It is not pretending.
 
-## Step 2: making it real
+## Step 2: a very light JS "AI"
 
-The oracle is written as a seam. To replace it with an actual model, swap the
-body of `oracle()` in `app.js` and keep the same return shape:
+It just **turns words into weights**.
 
-```js
-{ verdict: "yes" | "no", confidence: 0..1, yes: 0..1, source: "model" }
-```
+1. Normalize the question (lowercase, strip punctuation).
+2. Split into tokens, also look at bigrams and trigrams.
+3. Map each token/gram to a tiny deterministic weight using a seeded PRNG (same question → same weights). No network, no model files.
+4. Weight by length and position (early words matter a bit more).
+5. Sum into a single score, add a small seeded bias, pass through a sigmoid to get `p(yes)` between 0.05 and 0.95.
+6. Clamp confidence to ≤ 95%.
 
-Rendering reads only that shape, so nothing downstream changes. The realistic
-options for a light model that runs in the browser:
+It's invented behavior, not evidence about the world. The card says that out loud. No download, no build step, just plain JS.
 
-- **Transformers.js** — a tiny open-weight model via ONNX/WASM. Works without
-  WebGPU, a few tens of MB, runs offline after first load.
-- **WebLLM** — a small quantized LLM on WebGPU. Much better answers, needs
-  Chrome/Edge and a real download.
-- **A hosted API** — smallest bundle, best answers, but it breaks the
-  no-backend promise and costs money per question.
+## Adding a fact
+
+Open `facts.js`, copy the shape, fill it in, save, refresh. That's the whole
+workflow.
 
 ## Adding a fact
 
